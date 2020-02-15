@@ -1,6 +1,6 @@
 # Examples: JWTVault
 
-> see: [GitHub](!https://github.com/sgrust01/jwtvault.git)
+> see: [GitHub](https://github.com/sgrust01/jwtvault.git)
 
 ### Pre-requisite
 
