@@ -1,6 +1,6 @@
 [package]
 name = "jwtvault_examples"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Saurav Gupta <sgrust01@gmail.com>"]
 edition = "2018"
 default-run = "helloworld"
@@ -26,7 +26,7 @@ path="src/bin/03_custom_memory_vault.rs"
 
 
 [dependencies]
-jwtvault = {git = "https://github.com/sgrust01/jwtvault"}
+jwtvault = "0.2.0"
 rand="0.7.3"
 actix-web = "2"
 actix-rt = "1"
