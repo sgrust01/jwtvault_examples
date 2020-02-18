@@ -33,20 +33,23 @@ fn main() {
         token.authentication_token()
     ).ok().unwrap();
 
-    // server_refresh_token (variable) contains server which captures client private info
+    // server_refresh_token (variable) contains server method which captures client private info
     // which never leaves the server
     let private_info_about_john = server_refresh_token.server().unwrap();
+    let key = digest(&mut vault.engine(), format!("ServerSide: {}", user_john).as_bytes());
+    let data_on_server_side = private_info_about_john.get(&key).unwrap();
 
-    // server_refresh_token (variable) contains client which captures client public info
-    // which is send to client
-    let data_from_server_side = server_refresh_token.client().unwrap();
+    // server_refresh_token (variable) contains client method which captures client public info
+    // which is also send back to client
+    let public_info_about_john = server_refresh_token.client().unwrap();
+    let key = digest(&mut vault.engine(), format!("ClientSide: {}", user_john).as_bytes());
+    let data_on_client_side = public_info_about_john.get(&key).unwrap();
 
     // Check out the data on client and server which are public and private respectively
     println!(" [Public] John Info: {}",
-             String::from_utf8_lossy(data_from_server_side.as_slice()).to_string());
+             String::from_utf8_lossy(data_on_client_side.as_slice()).to_string());
     println!("[Private] John Info: {}",
-             String::from_utf8_lossy(private_info_about_john.as_slice()).to_string());
-
+             String::from_utf8_lossy(data_on_server_side.as_slice()).to_string());
 
     // lets renew authentication token
     let new_token = vault.renew(

@@ -6,6 +6,7 @@ use actix_web::{get, App, web, HttpServer, Responder};
 use actix_http::{Response, body::Body};
 
 use jwtvault::prelude::*;
+use std::collections::hash_map::DefaultHasher;
 
 #[get("/")]
 async fn index() -> impl Responder {
@@ -88,8 +89,19 @@ async fn execute(info: web::Path<(String, String)>, vault: web::Data<ServerVault
     };
     let session = result.unwrap();
 
-    let client = String::from_utf8_lossy(session.client().unwrap().as_slice()).to_string();
-    let server = String::from_utf8_lossy(session.server().unwrap().as_slice()).to_string();
+    let client = session.client().unwrap();
+    let server = session.server().unwrap();
+
+
+    let key = digest(&mut DefaultHasher::default(), format!("ClientSide: {}", user).as_bytes());
+    let data_for_client_side = client.get(&key).unwrap();
+
+    let key = digest(&mut DefaultHasher::default(), format!("ServerSide: {}", user).as_bytes());
+    let data_for_server_side = server.get(&key).unwrap();
+
+
+    let client = String::from_utf8_lossy(data_for_client_side.as_slice()).to_string();
+    let server = String::from_utf8_lossy(data_for_server_side.as_slice()).to_string();
 
     println!("Execution by User: {} - {} {}", user, client, server);
 

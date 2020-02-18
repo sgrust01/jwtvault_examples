@@ -1,7 +1,5 @@
 use jwtvault::prelude::*;
 use std::collections::HashMap;
-use rand::Rng;
-use rand;
 use std::ops::{Deref, DerefMut};
 use jwtvault::plugins::hashers::default::MemoryHasher;
 
@@ -38,19 +36,35 @@ fn main() {
     // which never leaves the server
     let private_info_about_john = server_refresh_token.server().unwrap();
 
+    // Let's retrieve data_for_server_side info
+    // server_key_1
+    let key = digest(&mut vault.engine(), "server_key_1".as_bytes());
+    let data_for_server_side = private_info_about_john.get(&key).unwrap();
+    println!(" [Private] John Info: {} = {}", "server_key_1", String::from_utf8_lossy(data_for_server_side.as_slice()).to_string());
+    // server_key_2
+    let key = digest(&mut vault.engine(), "server_key_2".as_bytes());
+    let data_for_server_side = private_info_about_john.get(&key).unwrap();
+    println!(" [Private] John Info: {} = {}", "server_key_2", String::from_utf8_lossy(data_for_server_side.as_slice()).to_string());
 
-    // server_refresh_token (variable) contains client which captures client data
-    let data_from_server_side = server_refresh_token.client().unwrap();
+    // public_info_about_john (variable) contains client which captures client data
+    let public_info_about_john = server_refresh_token.client().unwrap();
 
-    println!(" [Public] John Info: {}", String::from_utf8_lossy(data_from_server_side.as_slice()).to_string());
-    println!("[Private] John Info: {}", String::from_utf8_lossy(private_info_about_john.as_slice()).to_string());
+    // Let's retrieve data_on_client_side info
+    // client_key_1
+    let key = digest(&mut vault.engine(), "client_key_1".as_bytes());
+    let data_on_client_side = public_info_about_john.get(&key).unwrap();
+    println!("[Public] John Info: {} = {}", "client_key_1", String::from_utf8_lossy(data_on_client_side.as_slice()).to_string());
+    // client_key_2
+    let key = digest(&mut vault.engine(), "client_key_2".as_bytes());
+    let data_on_client_side = public_info_about_john.get(&key).unwrap();
+    println!("[Public] John Info: {} = {}", "client_key_2", String::from_utf8_lossy(data_on_client_side.as_slice()).to_string());
 
     // client_authentication_token (variable) contains buffer which captures client data
     let client_authentication_token = decode_client_token(vault.key_pairs().public_authentication_certificate(), token.authentication_token()).ok().unwrap();
     let data_from_client_side = client_authentication_token.buffer().unwrap();
 
     // Validate data on server is same a data on client
-    assert_eq!(data_from_server_side, data_from_client_side);
+    assert_eq!(public_info_about_john, data_from_client_side);
 
     // lets renew authentication token
     let new_token = vault.renew(
@@ -74,6 +88,38 @@ fn main() {
 
 struct MyVault(MemoryVault<MemoryHasher>);
 
+impl Persistence for MyVault {
+    fn store(&mut self, key: u64, value: String) {
+        self.0.store(key, value)
+    }
+
+    fn load(&self, key: u64) -> Option<&String> {
+        self.0.load(key)
+    }
+
+    fn remove(&mut self, key: u64) -> Option<String> {
+        self.0.remove(key)
+    }
+}
+
+impl PersistenceHasher<MemoryHasher> for MyVault {
+    fn engine(&self) -> MemoryHasher {
+        self.0.engine()
+    }
+}
+
+impl UserIdentity for MyVault {
+    fn check_same_user<T: AsRef<[u8]>>(&self, user: T, user_from_token: T) -> Result<(), Error> {
+        self.0.check_same_user(user, user_from_token)
+    }
+}
+
+impl KeyStore for MyVault {
+    fn key_pairs(&self) -> &KeyPairs {
+        self.0.key_pairs()
+    }
+}
+
 /// Implementation
 impl UserAuthentication for MyVault {
     /// Return normally if login succeeds else return an Error
@@ -89,16 +135,44 @@ impl UserAuthentication for MyVault {
             return Err(InvalidPassword(user, "Password does not match".to_string()).into());
         };
 
-        let mut rng = rand::thread_rng();
-
         // Generate some session information
 
         // value of 'client' variable will stored on client JWT and send back to client
-        let client = Some(format!("ClientSide Public Info: {}", rng.gen_range(1, 1000)).into_bytes());
-        // value of 'server' variable will stored on server JWT and will be retained on server
-        let server = Some(format!("ServerSide Private Info: {}", rng.gen_range(1000, 100000)).into_bytes());
+        let client = "client_data_1".as_bytes().to_vec();
+        let mut client_side_session = HashMap::new();
+        client_side_session.insert(
+            digest(
+                &mut self.engine(),
+                "client_key_1".as_bytes(),
+            ),
+            client,
+        );
+        let client = "client_data_2".as_bytes().to_vec();
+        client_side_session.insert(
+            digest(&mut self.engine(), "client_key_2".as_bytes()),
+            client,
+        );
 
-        let session = Session::new(client, server);
+        // value of 'server' variable will stored on server JWT and will be retained on server
+
+        let mut server_side_session = HashMap::new();
+
+        let server = "server_data_1".as_bytes().to_vec();
+        server_side_session.insert(
+            digest(&mut self.engine(), "server_key_1".as_bytes()),
+            server,
+        );
+
+        let server = "server_data_2".as_bytes().to_vec();
+        server_side_session.insert(
+            digest(&mut self.engine(), "server_key_2".as_bytes()),
+            server,
+        );
+
+        let session = Session::new(
+            Some(client_side_session),
+            Some(server_side_session),
+        );
 
         Ok(Some(session))
     }
