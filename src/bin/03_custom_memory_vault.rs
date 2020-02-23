@@ -1,195 +1,193 @@
 use jwtvault::prelude::*;
 use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
-use jwtvault::plugins::hashers::default::MemoryHasher;
+use std::collections::hash_map::DefaultHasher;
+
 
 fn main() {
     let mut users = HashMap::new();
 
     // User: John Doe
-    let user_john = "John Doe";
+    let user_john = "john_doe";
     let password_for_john = "john";
 
     // User: Jane Doe
-    let user_jane = "Jane Doe";
+    let user_jane = "jane_doe";
     let password_for_jane = "jane";
 
     // load users and their password from database/somewhere
     users.insert(user_john.to_string(), password_for_john.to_string());
     users.insert(user_jane.to_string(), password_for_jane.to_string());
 
-    // Initialized the vault
-    let mut vault = MyVault(MemoryVault::new(users, MemoryHasher::default()));
+    let loader = CertificateManger::default();
+
+    // Initialize vault
+    let mut vault = MyVault::new(loader, users);
 
     // John needs to login now
-    let token = vault.login(
+    let token = block_on(vault.login(
         user_john,
         password_for_john,
         None,
         None,
-    ).ok().unwrap().unwrap();
+    ));
+    let token = token.ok().unwrap();
+    // When John presents authentication token, it can be used to restore John's session info
+    let server_refresh_token = block_on(resolve_session_from_client_authentication_token(
+        &mut vault,
+        user_john,
+        token.authentication(),
+    ));
+    let server_refresh_token = server_refresh_token.ok().unwrap();
 
-    // When John presents authentication token it can be used to restore session info
-    let server_refresh_token = vault.resolve_server_token_from_client_authentication_token(user_john.as_bytes(), token.authentication_token()).ok().unwrap();
-
-    // private_info_about_john (variable) contains John's private session information
+    // server_refresh_token (variable) contains server method which captures client private info
     // which never leaves the server
     let private_info_about_john = server_refresh_token.server().unwrap();
+    let key = digest::<_, DefaultHasher>(user_john);
+    let data_on_server_side = private_info_about_john.get(&key).unwrap();
 
-    // Let's retrieve data_for_server_side info
-    // server_key_1
-    let key = digest(&mut vault.engine(), "server_key_1".as_bytes());
-    let data_for_server_side = private_info_about_john.get(&key).unwrap();
-    println!(" [Private] John Info: {} = {}", "server_key_1", String::from_utf8_lossy(data_for_server_side.as_slice()).to_string());
-    // server_key_2
-    let key = digest(&mut vault.engine(), "server_key_2".as_bytes());
-    let data_for_server_side = private_info_about_john.get(&key).unwrap();
-    println!(" [Private] John Info: {} = {}", "server_key_2", String::from_utf8_lossy(data_for_server_side.as_slice()).to_string());
+    // server_refresh_token (variable) contains client method which captures client public info
+    // which is also send back to client
+    assert!(server_refresh_token.client().is_none());
 
-    // public_info_about_john (variable) contains client which captures client data
-    let public_info_about_john = server_refresh_token.client().unwrap();
-
-    // Let's retrieve data_on_client_side info
-    // client_key_1
-    let key = digest(&mut vault.engine(), "client_key_1".as_bytes());
-    let data_on_client_side = public_info_about_john.get(&key).unwrap();
-    println!("[Public] John Info: {} = {}", "client_key_1", String::from_utf8_lossy(data_on_client_side.as_slice()).to_string());
-    // client_key_2
-    let key = digest(&mut vault.engine(), "client_key_2".as_bytes());
-    let data_on_client_side = public_info_about_john.get(&key).unwrap();
-    println!("[Public] John Info: {} = {}", "client_key_2", String::from_utf8_lossy(data_on_client_side.as_slice()).to_string());
-
-    // client_authentication_token (variable) contains buffer which captures client data
-    let client_authentication_token = decode_client_token(vault.key_pairs().public_authentication_certificate(), token.authentication_token()).ok().unwrap();
-    let data_from_client_side = client_authentication_token.buffer().unwrap();
-
-    // Validate data on server is same a data on client
-    assert_eq!(public_info_about_john, data_from_client_side);
+    // Check out the data on client and server which are public and private respectively
+    println!("[Private] John Info: {}",
+             String::from_utf8_lossy(data_on_server_side.as_slice()).to_string());
 
     // lets renew authentication token
-    let new_token = vault.renew(
-        user_john.as_bytes(),
-        token.refresh_token(),
+    let new_token = block_on(vault.renew(
+        user_john,
+        token.refresh(),
         None,
-    ).ok().unwrap();
+    ));
+    let new_token = new_token.ok().unwrap();
 
     // When John presents new authentication token it can be used to restore session info
-    let new_server_refresh_token = vault.resolve_server_token_from_client_authentication_token(
-        user_john.as_bytes(), new_token.as_str(),
-    ).ok().unwrap();
-
-    // Validate data for the client did not change post refresh
-    assert_eq!(new_server_refresh_token.client().unwrap(), server_refresh_token.client().unwrap());
+    let result = block_on(resolve_session_from_client_authentication_token(
+        &mut vault,
+        user_john,
+        new_token.as_str(),
+    ));
+    let _ = result.ok().unwrap();
 }
 
 
-// Define a new type
-// https://doc.rust-lang.org/1.0.0/style/features/types/newtype.html
+#[derive(Debug, Clone, PartialEq)]
+pub struct MyVault {
+    public_authentication_certificate: PublicKey,
+    private_authentication_certificate: PrivateKey,
+    public_refresh_certificate: PublicKey,
+    private_refresh_certificate: PrivateKey,
+    store: HashMap<u64, String>,
+    users: HashMap<String, String>,
+}
 
-struct MyVault(MemoryVault<MemoryHasher>);
+impl PersistenceHasher<DefaultHasher> for MyVault {}
 
+impl Store for MyVault {
+    fn public_authentication_certificate(&self) -> &PublicKey {
+        &self.public_authentication_certificate
+    }
+
+    fn private_authentication_certificate(&self) -> &PrivateKey {
+        &self.private_authentication_certificate
+    }
+
+    fn public_refresh_certificate(&self) -> &PublicKey {
+        &self.public_refresh_certificate
+    }
+
+    fn private_refresh_certificate(&self) -> &PrivateKey {
+        &self.private_refresh_certificate
+    }
+}
+
+impl MyVault {
+    pub fn new<T: Keys>(loader: T, users: HashMap<String, String>) -> Self {
+        let public_authentication_certificate = loader.public_authentication_certificate().clone();
+        let private_authentication_certificate = loader.private_authentication_certificate().clone();
+        let public_refresh_certificate = loader.public_refresh_certificate().clone();
+        let private_refresh_certificate = loader.private_refresh_certificate().clone();
+        let store = HashMap::new();
+
+        Self {
+            public_authentication_certificate,
+            private_authentication_certificate,
+            public_refresh_certificate,
+            private_refresh_certificate,
+            store,
+            users,
+        }
+    }
+}
+
+
+#[async_trait]
 impl Persistence for MyVault {
-    fn store(&mut self, key: u64, value: String) {
-        self.0.store(key, value)
+    async fn store(&mut self, key: u64, value: String) {
+        self.store.insert(key, value);
     }
 
-    fn load(&self, key: u64) -> Option<&String> {
-        self.0.load(key)
+    async fn load(&self, key: u64) -> Option<&String> {
+        self.store.get(&key)
     }
 
-    fn remove(&mut self, key: u64) -> Option<String> {
-        self.0.remove(key)
-    }
-}
-
-impl PersistenceHasher<MemoryHasher> for MyVault {
-    fn engine(&self) -> MemoryHasher {
-        self.0.engine()
+    async fn remove(&mut self, key: u64) -> Option<String> {
+        self.store.remove(&key)
     }
 }
 
+#[async_trait]
 impl UserIdentity for MyVault {
-    fn check_same_user<T: AsRef<[u8]>>(&self, user: T, user_from_token: T) -> Result<(), Error> {
-        self.0.check_same_user(user, user_from_token)
+    async fn check_same_user(&self, user: &str, user_from_token: &str) -> Result<(), Error> {
+        if user != user_from_token {
+            let msg = "Login Failed".to_string();
+            let reason = "Invalid token".to_string();
+            return Err(LoginFailed::InvalidTokenOwner(msg, reason).into());
+        }
+        Ok(())
     }
 }
 
-impl KeyStore for MyVault {
-    fn key_pairs(&self) -> &KeyPairs {
-        self.0.key_pairs()
-    }
-}
-
-/// Implementation
+#[async_trait]
 impl UserAuthentication for MyVault {
-    /// Return normally if login succeeds else return an Error
-    fn check_user_valid<T: AsRef<[u8]>>(&mut self, user: T, pass: T) -> Result<Option<Session>, Error> {
-        let user = String::from_utf8(user.as_ref().to_vec())?;
-        // load password from in memory or some remote location/database
-        let password = self.user_passwords().get(&user);
-        if password.is_none() {
-            return Err(MissingPassword(user, "No password".to_string()).into());
-        };
-        let password = password.unwrap().as_bytes();
-        if password != pass.as_ref() {
-            return Err(InvalidPassword(user, "Password does not match".to_string()).into());
+    async fn check_user_valid(&mut self, user: &str, password: &str) -> Result<Option<Session>, Error> {
+        let password_from_disk = self.users.get(&user.to_string());
+        if password_from_disk.is_none() {
+            let msg = "Login Failed".to_string();
+            let reason = "Invalid userid/password".to_string();
+            return Err(LoginFailed::InvalidPassword(msg, reason).into());
         };
 
-        // Generate some session information
-
-        // value of 'client' variable will stored on client JWT and send back to client
-        let client = "client_data_1".as_bytes().to_vec();
-        let mut client_side_session = HashMap::new();
-        client_side_session.insert(
-            digest(
-                &mut self.engine(),
-                "client_key_1".as_bytes(),
-            ),
-            client,
-        );
-        let client = "client_data_2".as_bytes().to_vec();
-        client_side_session.insert(
-            digest(&mut self.engine(), "client_key_2".as_bytes()),
-            client,
-        );
-
-        // value of 'server' variable will stored on server JWT and will be retained on server
-
-        let mut server_side_session = HashMap::new();
-
-        let server = "server_data_1".as_bytes().to_vec();
-        server_side_session.insert(
-            digest(&mut self.engine(), "server_key_1".as_bytes()),
-            server,
-        );
-
-        let server = "server_data_2".as_bytes().to_vec();
-        server_side_session.insert(
-            digest(&mut self.engine(), "server_key_2".as_bytes()),
-            server,
-        );
-
-        let session = Session::new(
-            Some(client_side_session),
-            Some(server_side_session),
-        );
-
+        let password_from_disk = password_from_disk.unwrap();
+        if password != password_from_disk.as_str() {
+            let msg = "Login Failed".to_string();
+            let reason = "Invalid userid/password".to_string();
+            return Err(LoginFailed::InvalidPassword(msg, reason).into());
+        };
+        let reference = digest::<_, DefaultHasher>(user.as_bytes());
+        let mut server = HashMap::new();
+        server.insert(reference, user.clone().as_bytes().to_vec());
+        let session = Session::new(None, Some(server));
         Ok(Some(session))
     }
 }
 
-// Boilerplate code
-impl Deref for MyVault {
-    type Target = MemoryVault<MemoryHasher>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+#[async_trait]
+impl Workflow for MyVault {
+    async fn login(&mut self, user: &str, pass: &str, authentication_token_expiry_in_seconds: Option<i64>, refresh_token_expiry_in_seconds: Option<i64>) -> Result<Token, Error> {
+        continue_login(self, user, pass, authentication_token_expiry_in_seconds, refresh_token_expiry_in_seconds).await
     }
-}
 
-// Boilerplate code
-impl DerefMut for MyVault {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    async fn renew(&mut self, user: &str, client_refresh_token: &String, authentication_token_expiry_in_seconds: Option<i64>) -> Result<String, Error> {
+        continue_renew(self, user, client_refresh_token, authentication_token_expiry_in_seconds).await
+    }
+
+    async fn logout(&mut self, user: &str, client_authentication_token: &String) -> Result<(), Error> {
+        continue_logout(self, user, client_authentication_token).await
+    }
+
+    async fn revoke(&mut self, client_refresh_token: &String) -> Result<(), Error> {
+        continue_revoke(self, client_refresh_token).await
     }
 }
