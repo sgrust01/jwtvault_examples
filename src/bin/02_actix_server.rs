@@ -1,16 +1,16 @@
-use std::ops::Deref;
 use std::sync::Mutex;
-use std::collections::HashMap;
-
 use actix_web::{get, App, web, HttpServer, Responder};
-use actix_http::{Response, body::Body};
+use actix_http::{Response, body::Body, error::ErrorBadRequest};
+use std::ops::DerefMut;
 
 use jwtvault::prelude::*;
-use std::collections::hash_map::DefaultHasher;
+
+use std::collections::HashMap;
+
 
 #[get("/")]
 async fn index() -> impl Responder {
-    format!("Hello World!!!")
+    format!("Hello JWT!!!")
 }
 
 
@@ -20,59 +20,50 @@ struct ServerVault {
 
 #[get("/login/{user}/{password}")]
 async fn login(info: web::Path<(String, String)>, vault: web::Data<ServerVault>) -> Response {
-    let mut engine = vault.vault.lock().unwrap();
+    println!("=== Login ===");
+
+    let mut manager = vault.vault.lock().unwrap();
 
     let user = &info.0;
     let password = &info.1;
+    println!("user = {} password = {}", user, password);
 
-    // Try login to the app
-    let token = engine.login(
-        user.as_bytes(),
-        password.as_bytes(),
+    let token = manager.login(
+        user.as_str(),
+        password.as_str(),
         None,
-        None);
-
-    // Check if a token has been generated
-    if let Err(_) = token {
-        let response = Response::Unauthorized()
-            .header("content-type", "text/plain")
-            .finish();
-        return response;
-    }
-    let token = token.ok().unwrap();
-    if token.is_none() {
-        let response = Response::Forbidden()
-            .header("content-type", "text/plain")
-            .finish();
-        return response;
+        None,
+    ).await;
+    if token.is_err() {
+        return Response::from_error(ErrorBadRequest(token.err().unwrap()));
     };
+    let token = token.ok().unwrap();
+    let token = serde_json::to_string(&token).unwrap();
 
-    let token = token.unwrap();
-
-    println!("Login User: {}", user);
-
-    // Prepare json for dispatch
     let body = Body::from(
-        format!("{{ \"auth\": \"{}\", \"ref\": \"{}\" }}", token.authentication_token().deref(), token.refresh_token().deref())
+        token
     );
 
     let response = Response::Ok()
         .header("Content-Type", "application/json")
         .finish();
 
-
     response.set_body(body)
 }
 
-
 #[get("/execute/{user}/{token}")]
 async fn execute(info: web::Path<(String, String)>, vault: web::Data<ServerVault>) -> Response {
-    let engine = vault.vault.lock().unwrap();
+    println!("=== Execute ===");
+    let mut engine = vault.vault.lock().unwrap();
+    let vault = engine.deref_mut();
 
     let user = &info.0;
     let token = &info.1;
 
-    let result = engine.resolve_server_token_from_client_authentication_token(user.as_bytes(), token.as_str());
+    let result = resolve_session_from_client_authentication_token(
+        vault,
+        user.as_str(), token.as_str(),
+    ).await;
 
     if result.is_err() {
         let response = Response::Unauthorized()
@@ -81,6 +72,7 @@ async fn execute(info: web::Path<(String, String)>, vault: web::Data<ServerVault
         return response;
     };
     let result = result.ok();
+
     if result.is_none() {
         let response = Response::NotAcceptable()
             .header("content-type", "text/plain")
@@ -89,21 +81,10 @@ async fn execute(info: web::Path<(String, String)>, vault: web::Data<ServerVault
     };
     let session = result.unwrap();
 
-    let client = session.client().unwrap();
-    let server = session.server().unwrap();
+    let client = session.client();
+    let server = session.server();
 
-
-    let key = digest(&mut DefaultHasher::default(), format!("ClientSide: {}", user).as_bytes());
-    let data_for_client_side = client.get(&key).unwrap();
-
-    let key = digest(&mut DefaultHasher::default(), format!("ServerSide: {}", user).as_bytes());
-    let data_for_server_side = server.get(&key).unwrap();
-
-
-    let client = String::from_utf8_lossy(data_for_client_side.as_slice()).to_string();
-    let server = String::from_utf8_lossy(data_for_server_side.as_slice()).to_string();
-
-    println!("Execution by User: {} - {} {}", user, client, server);
+    println!("Session for User: {} - Client: {:#?} Server: {:#?}", user, client, server.unwrap());
 
     // Prepare json for dispatch
     let body = Body::from(
@@ -118,11 +99,12 @@ async fn execute(info: web::Path<(String, String)>, vault: web::Data<ServerVault
 
 #[get("/renew/{user}/{token}")]
 async fn renew(info: web::Path<(String, String)>, vault: web::Data<ServerVault>) -> Response {
+    println!("=== Renew ===");
     let mut engine = vault.vault.lock().unwrap();
     let user = &info.0;
     let client_refresh_token = &info.1;
 
-    let result = engine.renew(user.as_bytes(), &client_refresh_token, None);
+    let result = engine.renew(user.as_str(), &client_refresh_token, None).await;
     if result.is_err() {
         let response = Response::Unauthorized()
             .header("content-type", "text/plain")
@@ -147,10 +129,11 @@ async fn renew(info: web::Path<(String, String)>, vault: web::Data<ServerVault>)
 
 #[get("/logout/{user}/{token}")]
 async fn logout(info: web::Path<(String, String)>, vault: web::Data<ServerVault>) -> Response {
+    println!("=== Logout ===");
     let mut engine = vault.vault.lock().unwrap();
     let user = &info.0;
     let client_authentication_token = &info.1;
-    let result = engine.logout(user.as_bytes(), client_authentication_token);
+    let result = engine.logout(user.as_str(), client_authentication_token).await;
     if result.is_err() {
         let response = Response::Unauthorized()
             .header("content-type", "text/plain")
@@ -175,8 +158,6 @@ async fn logout(info: web::Path<(String, String)>, vault: web::Data<ServerVault>
 async fn main() -> std::io::Result<()> {
     let uri = "127.0.0.1:8080";
 
-    let mut users = HashMap::new();
-
     // User: John Doe
     let user_john = "john_doe";
     let password_for_john = "john";
@@ -184,13 +165,16 @@ async fn main() -> std::io::Result<()> {
     // User: Jane Doe
     let user_jane = "jane_doe";
     let password_for_jane = "jane";
+    let mut users = HashMap::new();
 
     // load users and their password from database/somewhere
     users.insert(user_john.to_string(), password_for_john.to_string());
     users.insert(user_jane.to_string(), password_for_jane.to_string());
 
+
     // Initialize vault
-    let vault = DefaultVault::new(users);
+    let loader = CertificateManger::default();
+    let vault = DefaultVault::new(loader, users);
     let vault = ServerVault { vault: Mutex::new(vault) };
     let vault = web::Data::new(vault);
 
