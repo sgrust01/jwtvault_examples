@@ -39,7 +39,7 @@ fn main() {
     // John needs to login now
     let token = block_on(vault.login(
         user_john,
-        &hashed_password_for_john.as_str(),
+        password_for_john,
         None,
         None,
     ));
@@ -204,7 +204,8 @@ impl UserAuthentication for MyVault {
         };
 
         let password_from_disk = password_from_disk.unwrap();
-        if password != password_from_disk.as_str() {
+        let result = verify_user_password_with_argon(password, self.password_hashing_secret.as_str(), password_from_disk)?;
+        if ! result {
             let msg = "Login Failed".to_string();
             let reason = "Invalid userid/password".to_string();
             return Err(LoginFailed::InvalidPassword(msg, reason).into());
