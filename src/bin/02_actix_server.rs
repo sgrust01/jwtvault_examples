@@ -158,23 +158,37 @@ async fn logout(info: web::Path<(String, String)>, vault: web::Data<ServerVault>
 async fn main() -> std::io::Result<()> {
     let uri = "127.0.0.1:8080";
 
+    let mut users = HashMap::new();
+
+    let loader = CertificateManger::default();
+
     // User: John Doe
     let user_john = "john_doe";
     let password_for_john = "john";
 
+    // This should ideally be pre-computed during user sign-up/password reset/change password
+    let hashed_password_for_john = hash_password_with_argon(
+        password_for_john,
+        loader.password_hashing_secret().as_str(),
+    ).unwrap();
+
     // User: Jane Doe
     let user_jane = "jane_doe";
     let password_for_jane = "jane";
-    let mut users = HashMap::new();
 
-    // load users and their password from database/somewhere
-    users.insert(user_john.to_string(), password_for_john.to_string());
-    users.insert(user_jane.to_string(), password_for_jane.to_string());
+    // This should ideally be pre-computed during user sign-up/password reset/change password
+    let hashed_password_for_jane = hash_password_with_argon(
+        password_for_jane,
+        loader.password_hashing_secret().as_str(),
+    ).unwrap();
+
+    // load users and their (argon hashed) password from database/somewhere
+    users.insert(user_john.to_string(), hashed_password_for_john);
+    users.insert(user_jane.to_string(), hashed_password_for_jane);
 
 
     // Initialize vault
-    let loader = CertificateManger::default();
-    let vault = DefaultVault::new(loader, users);
+    let vault = DefaultVault::new(loader, users, false);
     let vault = ServerVault { vault: Mutex::new(vault) };
     let vault = web::Data::new(vault);
 

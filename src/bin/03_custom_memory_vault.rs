@@ -1,24 +1,37 @@
 use jwtvault::prelude::*;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use jwtvault::errors::LoginFailed::PasswordHashingFailed;
 
 
 fn main() {
     let mut users = HashMap::new();
 
+    let loader = CertificateManger::default();
+
     // User: John Doe
     let user_john = "john_doe";
     let password_for_john = "john";
+
+    // This should ideally be pre-computed during user sign-up/password reset/change password
+    let hashed_password_for_john = hash_password_with_argon(
+        password_for_john,
+        loader.password_hashing_secret().as_str(),
+    ).unwrap();
 
     // User: Jane Doe
     let user_jane = "jane_doe";
     let password_for_jane = "jane";
 
-    // load users and their password from database/somewhere
-    users.insert(user_john.to_string(), password_for_john.to_string());
-    users.insert(user_jane.to_string(), password_for_jane.to_string());
+    // This should ideally be pre-computed during user sign-up/password reset/change password
+    let hashed_password_for_jane = hash_password_with_argon(
+        password_for_jane,
+        loader.password_hashing_secret().as_str(),
+    ).unwrap();
 
-    let loader = CertificateManger::default();
+    // load users and their (argon hashed) password from database/somewhere
+    users.insert(user_john.to_string(), hashed_password_for_john.to_string());
+    users.insert(user_jane.to_string(), hashed_password_for_jane.to_string());
 
     // Initialize vault
     let mut vault = MyVault::new(loader, users);
@@ -26,10 +39,11 @@ fn main() {
     // John needs to login now
     let token = block_on(vault.login(
         user_john,
-        password_for_john,
+        &hashed_password_for_john.as_str(),
         None,
         None,
     ));
+
     let token = token.ok().unwrap();
     // When John presents authentication token, it can be used to restore John's session info
     let server_refresh_token = block_on(resolve_session_from_client_authentication_token(
@@ -77,11 +91,36 @@ pub struct MyVault {
     private_authentication_certificate: PrivateKey,
     public_refresh_certificate: PublicKey,
     private_refresh_certificate: PrivateKey,
+    password_hashing_secret: PrivateKey,
     store: HashMap<u64, String>,
     users: HashMap<String, String>,
+
 }
 
 impl PersistenceHasher<DefaultHasher> for MyVault {}
+
+impl TrustToken for MyVault {
+    fn trust_token_bearer(&self) -> bool {
+        false
+    }
+}
+
+impl PasswordHasher<ArgonHasher<'static>> for MyVault {
+    fn hash_user_password<T: AsRef<str>>(&self, user: T, password: T) -> Result<String, Error> {
+        let secret_key = self.password_hashing_secret.as_str();
+        hash_password_with_argon::<&str>(password.as_ref(), secret_key).map_err(|e| {
+            PasswordHashingFailed(user.as_ref().to_string(), e.to_string()).into()
+        })
+    }
+
+    fn verify_user_password<T: AsRef<str>>(&self, user: T, password: T, hash: T) -> Result<bool, Error> {
+        let secret_key = self.password_hashing_secret.as_str();
+        verify_user_password_with_argon::<&str>(password.as_ref(), secret_key, hash.as_ref()).map_err(|e| {
+            PasswordHashingFailed(user.as_ref().to_string(), e.to_string()).into()
+        })
+    }
+}
+
 
 impl Store for MyVault {
     fn public_authentication_certificate(&self) -> &PublicKey {
@@ -99,6 +138,10 @@ impl Store for MyVault {
     fn private_refresh_certificate(&self) -> &PrivateKey {
         &self.private_refresh_certificate
     }
+
+    fn password_hashing_secret(&self) -> &PrivateKey {
+        &self.password_hashing_secret
+    }
 }
 
 impl MyVault {
@@ -107,6 +150,7 @@ impl MyVault {
         let private_authentication_certificate = loader.private_authentication_certificate().clone();
         let public_refresh_certificate = loader.public_refresh_certificate().clone();
         let private_refresh_certificate = loader.private_refresh_certificate().clone();
+        let password_hashing_secret = loader.password_hashing_secret();
         let store = HashMap::new();
 
         Self {
@@ -114,6 +158,7 @@ impl MyVault {
             private_authentication_certificate,
             public_refresh_certificate,
             private_refresh_certificate,
+            password_hashing_secret,
             store,
             users,
         }
@@ -174,7 +219,7 @@ impl UserAuthentication for MyVault {
 
 
 #[async_trait]
-impl Workflow for MyVault {
+impl Workflow<DefaultHasher, ArgonHasher<'static>> for MyVault {
     async fn login(&mut self, user: &str, pass: &str, authentication_token_expiry_in_seconds: Option<i64>, refresh_token_expiry_in_seconds: Option<i64>) -> Result<Token, Error> {
         continue_login(self, user, pass, authentication_token_expiry_in_seconds, refresh_token_expiry_in_seconds).await
     }
