@@ -116,9 +116,12 @@ async fn renew(info: web::Path<(String, String)>, vault: web::Data<ServerVault>)
     println!("Renewed: {}", user);
 
     // Prepare json for dispatch
+    let token = Token::new(client_authentication_token.clone(), client_refresh_token.clone());
+    let token = serde_json::to_string(&token).unwrap();
     let body = Body::from(
-        format!("{{ \"auth\": \"{}\", \"ref\": \"{}\" }}", client_authentication_token, client_refresh_token)
+        token
     );
+
 
     let response = Response::Ok()
         .header("Content-Type", "application/json")
