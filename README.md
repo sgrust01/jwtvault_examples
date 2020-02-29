@@ -75,4 +75,26 @@ Exhibit the feature for saving custom information in memory. The library user ne
     
 * `check_user_valid` is used to validate user requesting the access is the same user as on the token
 * User on the token can be encrypted based on the application requirement
-* User on token can then be decrypted securely on server and compared with plain user 
+* User on token can then be decrypted securely on server and compared with plain user
+
+### Example 3: Postgres
+
+#### Pre-requisite
+___ 
+
+* You need postgres installed and should be able to connect via cli
+* If you need help with setup see [here](documentation/POSTGRES.md)
+* Setup guide is not suitable for production installation
+
+```shell script
+  $ create demodb
+  $ psql demodb < ./documentation/setup.sql
+```
+  
+
+#### Notes
+___
+Exhibit sample code that can be copied over to managing async connection for postgress
+
+    $ cargo run --bin postgres
+    
