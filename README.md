@@ -85,6 +85,7 @@ ___
 * You need postgres installed and should be able to connect via cli
 * If you need help with setup see [here](documentation/POSTGRES.md)
 * Setup guide is not suitable for production installation
+* Please update the .env file appropriate values
 
 ```shell script
   $ create demodb
@@ -94,7 +95,13 @@ ___
 
 #### Notes
 ___
-Exhibit sample code that can be copied over to managing async connection for postgress
+
+* Exhibit sample code that can be copied over for managing async connection to postgres db
+* Any complain about PRIMARY_KEY violation which should be ignore
+
+___***PLEASE NOTE:***___: 
+The input strings are not sanitized in the example. 
+All data from/to the web needs to be sanitized to avoid SQL Injection.
 
     $ cargo run --bin postgres
     
