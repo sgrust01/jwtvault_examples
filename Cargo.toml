@@ -28,6 +28,10 @@ path="src/bin/03_custom_memory_vault.rs"
 name="postgres"
 path="src/bin/04_async_postgres.rs"
 
+[[bin]]
+name="webserver"
+path="src/bin/05_web_server.rs"
+
 
 [dependencies]
 jwtvault = "0.5.0"
