@@ -140,7 +140,7 @@ ___***PLEASE NOTE:***___:
 The input strings are not sanitized in the example. 
 All data from/to the web needs to be sanitized to avoid SQL Injection.
 
-    $ cargo run --bin postgres
+    $ cargo run --bin webserver
 
 ##### Workflow 1: User signup
  
