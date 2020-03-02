@@ -136,10 +136,6 @@ ___
 * Exhibit sample code that can be copied over for hosting [actix](https://github.com/actix/actix) web-server 
 with integration with [postgres](https://github.com/sfackler/rust-postgres)
 
-___***PLEASE NOTE:***___: 
-The input strings are not sanitized in the example. 
-All data from/to the web needs to be sanitized to avoid SQL Injection.
-
     $ cargo run --bin webserver
 
 ##### Workflow 1: User signup
