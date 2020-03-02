@@ -8,11 +8,11 @@
     
 ### Overview
 
-* Example 1: Hello World - CLI application
-* Example 2: Actix Server - Web server
-* Example 3: Custom Vault - Create vault with custom logic
-* Example 4: Postgres - CLI for postgres backend
-* Example 5: Webserver - Actix server with postgres backend
+* Example 1: [Hello World](https://github.com/sgrust01/jwtvault_examples#example-1-hello-world) - CLI application
+* Example 2: [Actix Server](https://github.com/sgrust01/jwtvault_examples#example-2-actix-server) - Web server
+* Example 3: [Custom Vault](https://github.com/sgrust01/jwtvault_examples#workflow-3-renew-user-authentication-token) - Create vault with custom logic
+* Example 4: [Postgres](https://github.com/sgrust01/jwtvault_examples#example-4-postgres) - CLI for postgres backend
+* Example 5: [Webserver](https://github.com/sgrust01/jwtvault_examples#example-5-webserver) - Actix server with postgres backend
     
 ### Example 1: Hello World
 
@@ -151,7 +151,7 @@ All data from/to the web needs to be sanitized to avoid SQL Injection.
 
  ##### Workflow 2: User login
  
-    $ curl -X GET http://127.0.0.1:8080/login/<user_id>/john
+    $ curl -X GET http://127.0.0.1:8080/login/<user_id>/<password>
 
 * auth - Represents the authentication_token
     * To be used for execute request for server
