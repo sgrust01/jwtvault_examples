@@ -108,9 +108,6 @@ impl Store for DBVault {
         &self.private_refresh_certificate
     }
 
-    fn password_hashing_secret(&self) -> &PrivateKey {
-        &self.password_hashing_secret
-    }
 }
 
 impl DBVault {

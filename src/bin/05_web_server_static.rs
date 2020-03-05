@@ -67,10 +67,6 @@ impl Store for WebVault {
     fn private_refresh_certificate(&self) -> &PrivateKey {
         &self.private_refresh_certificate
     }
-
-    fn password_hashing_secret(&self) -> &PrivateKey {
-        &self.password_hashing_secret
-    }
 }
 
 impl WebVault {
