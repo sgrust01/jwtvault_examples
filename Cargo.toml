@@ -1,9 +1,9 @@
 [package]
 name = "jwtvault_examples"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Saurav Gupta <sgrust01@gmail.com>"]
 edition = "2018"
-default-run = "helloworld"
+default-run = "helloworld-dynamic"
 publish = false
 description = """
 Examples for jwtvault
@@ -13,28 +13,48 @@ Examples for jwtvault
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [[bin]]
-name="helloworld"
-path="src/bin/01_hello_world.rs"
+name="helloworld-static"
+path="src/bin/01_hello_world_static.rs"
 
 [[bin]]
-name="actix"
-path="src/bin/02_actix_server.rs"
+name="helloworld-dynamic"
+path="src/bin/01_hello_world_dynamic.rs"
 
 [[bin]]
-name="custom"
-path="src/bin/03_custom_memory_vault.rs"
+name="actix-static"
+path="src/bin/02_actix_server_static.rs"
 
 [[bin]]
-name="postgres"
-path="src/bin/04_async_postgres.rs"
+name="actix-dynamic"
+path="src/bin/02_actix_server_dynamic.rs"
 
 [[bin]]
-name="webserver"
-path="src/bin/05_web_server.rs"
+name="custom-static"
+path="src/bin/03_custom_memory_vault_static.rs"
+
+[[bin]]
+name="custom-dynamic"
+path="src/bin/03_custom_memory_vault_dynamic.rs"
+
+[[bin]]
+name="postgres-static"
+path="src/bin/04_async_postgres_static.rs"
+
+[[bin]]
+name="postgres-dynamic"
+path="src/bin/04_async_postgres_dynamic.rs"
+
+[[bin]]
+name="webserver-static"
+path="src/bin/05_web_server_static.rs"
+
+[[bin]]
+name="webserver-dynamic"
+path="src/bin/05_web_server_dynamic.rs"
 
 
 [dependencies]
-jwtvault = "0.5.0"
+jwtvault = "0.6.0"
 rand="0.7.3"
 actix-web = "2"
 actix-rt = "1"
