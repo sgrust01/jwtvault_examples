@@ -1,5 +1,6 @@
 use jwtvault::prelude::*;
-use jwtvault_examples::database::setup::{signup_user, connection};
+use jwtvault_examples::database::setup::connection;
+use jwtvault_examples::database::users_setup::signup_app_users;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use jwtvault::errors::LoginFailed::PasswordHashingFailed;
@@ -9,40 +10,6 @@ use postgres::NoTls;
 use r2d2::Pool;
 use r2d2_postgres::PostgresConnectionManager;
 
-fn signup_app_users() {
-    let pool = connection().ok().unwrap();
-    let loader = CertificateManger::default();
-    let private_key = loader.password_hashing_secret();
-    let secret_key = private_key.as_str();
-
-    // User: John Doe
-    let user_john = "john_doe";
-    let password_for_john = "john";
-
-    let hashed_password_for_john = hash_password_with_argon(
-        password_for_john,
-        secret_key,
-    ).unwrap();
-    let result = signup_user::<&str>(pool.clone(), &user_john, &hashed_password_for_john);
-    if let Err(e) = result {
-        let reason = e.to_string();
-        eprintln!("Signup failed for user: {} Reason: {}", user_john, reason);
-    };
-
-    // User: Jane Doe
-    let user_jane = "jane_doe";
-    let password_for_jane = "jane";
-
-    let hashed_password_for_jane = hash_password_with_argon(
-        password_for_jane,
-        loader.password_hashing_secret().as_str(),
-    ).unwrap();
-    let result = signup_user::<&str>(pool.clone(), &user_jane, &hashed_password_for_jane);
-    if let Err(e) = result {
-        let reason = e.to_string();
-        eprintln!("Signup failed for user: {} Reason: {}", user_jane, reason);
-    };
-}
 
 async fn resolve_password_for_user<T: AsRef<str>>(pool: Pool<PostgresConnectionManager<NoTls>>, user: T) -> Result<Option<String>, Error> {
     let mut conn = pool.get()?;
@@ -107,7 +74,6 @@ impl Store for DBVault {
     fn private_refresh_certificate(&self) -> &PrivateKey {
         &self.private_refresh_certificate
     }
-
 }
 
 impl DBVault {
@@ -220,7 +186,7 @@ fn main() {
     let mut vault = DBVault::default();
 
     // This should be done during user signup
-    signup_app_users();
+    block_on(signup_app_users());
 
     let user_john = "john_doe";
     let user_jane = "jane_doe";
@@ -279,7 +245,7 @@ fn main() {
         None,
         None,
     ));
-    let token= token.ok().unwrap();
+    let token = token.ok().unwrap();
 
     // When Jane presents authentication token, it can be used to restore John's session info
     let server_refresh_token = block_on(resolve_session_from_client_authentication_token(
@@ -302,5 +268,4 @@ fn main() {
     // Check out the data on client and server which are public and private respectively
     println!("[Private] Jane Info: {}",
              String::from_utf8_lossy(data_on_server_side.as_slice()).to_string());
-
 }

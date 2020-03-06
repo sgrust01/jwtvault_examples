@@ -22,12 +22,3 @@ pub fn connection() -> Result<Pool<PostgresConnectionManager<NoTls>>, Error>{
     create_r2d2_pool(conn_config, pool_config)
 }
 
-pub fn signup_user<T: AsRef<str>>(pool: Pool<PostgresConnectionManager<NoTls>>, user: T, password: T) -> Result<(), Error> {
-    let mut conn = pool.get()?;
-    let user = user.as_ref();
-    let password = password.as_ref();
-    // Watch out for SQL Injection
-    let query = format!("INSERT INTO tbl_users VALUES ('{}', '{}')", user, password);
-    let _ = conn.execute(query.as_str(), &[])?;
-    Ok(())
-}
